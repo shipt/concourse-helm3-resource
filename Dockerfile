@@ -1,10 +1,14 @@
-FROM alpine/helm:3.2.0
-LABEL maintainer "Yann David (@Typositoire) <davidyann88@gmail>"
+FROM alpine/helm:3.3.1
 
-RUN apk add --update --upgrade --no-cache jq bash curl git
+ARG KUBECTL_SOURCE=kubernetes-release/release
+ENV KUBECTL_ARCH="linux/amd64"
 
-ARG KUBERNETES_VERSION=1.18.2
-RUN curl -sL -o /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl; \
+RUN apk add --update --upgrade --no-cache ca-certificates jq bash curl git gettext libintl
+
+ARG KUBECTL_TRACK=stable.txt
+
+RUN KUBECTL_VERSION=$(curl -SsL --retry 5 "https://storage.googleapis.com/${KUBECTL_SOURCE}/${KUBECTL_TRACK}") && \
+  curl -SsL --retry 5 "https://storage.googleapis.com/${KUBECTL_SOURCE}/${KUBECTL_VERSION}/bin/${KUBECTL_ARCH}/kubectl" > /usr/local/bin/kubectl && \
   chmod +x /usr/local/bin/kubectl
 
 ADD assets /opt/resource
