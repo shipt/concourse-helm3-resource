@@ -1,4 +1,4 @@
-FROM alpine/helm:3.3.1
+FROM alpine/helm:3.4.2
 
 ARG KUBECTL_SOURCE=kubernetes-release/release
 ENV KUBECTL_ARCH="linux/amd64"
@@ -14,7 +14,7 @@ RUN KUBECTL_VERSION=$(curl -SsL --retry 5 "https://storage.googleapis.com/${KUBE
 ADD assets /opt/resource
 RUN chmod +x /opt/resource/*
 
-ARG HELM_PLUGINS="https://github.com/helm/helm-2to3"
+ARG HELM_PLUGINS="https://github.com/helm/helm-2to3 https://github.com/databus23/helm-diff"
 RUN for i in $(echo $HELM_PLUGINS | xargs -n1); do helm plugin install $i; done
 
 RUN curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash && \

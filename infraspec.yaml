@@ -1,4 +1,5 @@
 language: go
+team: devops
 deploy:
   pipeline: docker-image
   group: platform

@@ -35,7 +35,10 @@ setup_kubernetes() {
         kubectl config set-cluster default --server=$cluster_url --insecure-skip-tls-verify=true
       else
         ca_path="/root/.kube/ca.pem"
-        echo "$cluster_ca" | base64 -d > $ca_path
+        if ! echo "$cluster_ca" | base64 -d > $ca_path; then
+          echo "info: assuming unencoded cluster CA cert" >/dev/stderr
+          echo "$cluster_ca" > $ca_path
+        fi
         kubectl config set-cluster default --server=$cluster_url --certificate-authority=$ca_path
       fi
 
@@ -102,6 +105,7 @@ wait_for_service_up() {
 setup_repos() {
   repos=$(jq -c '(try .source.repos[] catch [][])' < $1)
   plugins=$(jq -c '(try .source.plugins[] catch [][])' < $1)
+  stable_repo=$(jq -r '.source.stable_repo // "https://charts.helm.sh/stable"' < $1 )
 
   local IFS=$'\n'
 
@@ -141,8 +145,10 @@ setup_repos() {
     $helm_bin repo update
   fi
 
-  $helm_bin repo add stable https://kubernetes-charts.storage.googleapis.com
-  $helm_bin repo update
+  if [ ! "$stable_repo" == "false" ]; then
+    $helm_bin repo add stable $stable_repo
+    $helm_bin repo update
+  fi
 }
 
 setup_resource() {
@@ -155,5 +161,4 @@ setup_resource() {
   setup_kubernetes $1 $2
   echo "Initializing helm..."
   setup_helm $1 $2
-  setup_repos $1 $2
 }

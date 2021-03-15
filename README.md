@@ -2,11 +2,16 @@
 
 Deploy [Helm Charts](https://github.com/helm/helm) from [Concourse](https://concourse-ci.org/).
 
-Heavily based on the work of https://github.com/linkyard/concourse-helm-resource
+Heavily based on the work of [`linkyard/concourse-helm-resource`][linkyard].
+
+[linkyard]: https://github.com/linkyard/concourse-helm-resource
 
 ## Docker Image
 
-https://hub.docker.com/repository/docker/typositoire/concourse-helm3-resource
+You can pull the resource image from [`typositoire/concourse-helm3-resource`][dockerhub]. !["Dockerhub Pull Badge"](https://img.shields.io/docker/pulls/typositoire/concourse-helm3-resource.svg "Dockerhub Pull Badge")
+
+
+[dockerhub]: https://hub.docker.com/repository/docker/typositoire/concourse-helm3-resource
 
 ## Usage
 
@@ -21,7 +26,7 @@ resource_types:
 ## Source Configuration
 
 * `cluster_url`: *Optional.* URL to Kubernetes Master API service. Do not set when using the `kubeconfig_path` parameter, otherwise required.
-* `cluster_ca`: *Optional.* Base64 encoded PEM. (Required if `insecure_cluster` == false)
+* `cluster_ca`: *Optional.* Cluster CA certificate PEM, optionally Base64 encoded. (Required if `insecure_cluster` == false)
 * `insecure_cluster`: *Optional.* Skip TLS verification for cluster API. (Required if `cluster_ca` is nil)
 * `token`: *Optional.* Bearer token for Kubernetes.  This, 'token_path' or `admin_key`/`admin_cert` are required if `cluster_url` is https.
 * `token_path`: *Optional.* Path to file containing the bearer token for Kubernetes.  This, 'token' or `admin_key`/`admin_cert` are required if `cluster_url` is https.
@@ -32,7 +37,7 @@ resource_types:
 * `helm_history_max`: *Optional.* Limits the maximum number of revisions. (Default: 0 = no limit)
 * `repos`: *Optional.* Array of Helm repositories to initialize, each repository is defined as an object with properties `name`, `url` (required) username and password (optional).
 * `plugins`: *Optional.* Array of Helm plugins to install, each defined as an object with properties `url` (required), `version` (optional).
-* `stable_repo`: *Optional* Override default Helm stable repo <https://kubernetes-charts.storage.googleapis.com>. Useful if running helm deploys without internet access.
+* `stable_repo`: *Optional* A `false` value will disable using a default Helm stable repo. Any other value will be used to Override default Helm stable repo URL <https://charts.helm.sh/stable>. Useful if running helm deploys without internet access.
 * `tracing_enabled`: *Optional.* Enable extremely verbose tracing for this resource. Useful when developing the resource itself. May allow secrets to be displayed. (Default: false)
 * `helm_setup_purge_all`: *Optional.* Delete and purge every helm release. Use with extreme caution. (Default: false)
 
@@ -62,8 +67,9 @@ Deploy an helm chart
   The default behaviour of backslashes in `--set` is to quote the next character so `val\ue` is treated as `value` by Helm.
 * `token_path`: *Optional.* Path to file containing the bearer token for Kubernetes.  This, 'token' or `admin_key`/`admin_cert` are required if `cluster_url` is https.
 * `version`: *Optional* Chart version to deploy, can be a file or a value. Only applies if `chart` is not a file.
-* `delete`: *Optional.* Deletes the release instead of installing it. Requires the `name`. (Default: false)
- ## TODO * `test`: *Optional.* Test the release instead of installing it. Requires the `release`. (Default: false)
+* `test`: *Optional.* Test the release instead of installing it. Requires the `release`. (Default: false)
+* `test_logs`: *Optional.* Display pod logs when running `test`. (Default: false)
+* `delete`: *Optional.* Deletes the release instead of installing it. Requires the `release`. (Default: false)
 * `replace`: *Optional.* Replace deleted release with same name. (Default: false)
 * `force`: *Optional.* Force resource update through delete/recreate if needed. (Default: false)
 * `devel`: *Optional.* Allow development versions of chart to be installed. This is useful when wanting to install pre-release
@@ -76,6 +82,8 @@ Deploy an helm chart
 * `timeout`: *Optional.* This flag sets the max time to wait for any individual Kubernetes operation. (Default: 5m0s)
 * `wait`: *Optional.* Allows deploy task to sleep for X seconds before continuing to next task. Allows pods to restart and become stable, useful where dependency between pods exists. (Default: 0)
 * `kubeconfig_path`: *Optional.* File containing a kubeconfig. Overrides source configuration for cluster, token, and admin config.
+* `show_diff`: *Optional.* Show the diff that is applied if upgrading an existing successful release. Will not be used when `devel` is set. (Default: false)
+* `skip_missing_values:` *Optional.* Missing values files are skipped if they are specified in the values but do not exist. (Default false)
 
 ## Example
 
