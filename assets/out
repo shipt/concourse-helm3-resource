@@ -15,6 +15,7 @@ cat > $payload <&0
 
 # Prepare
 setup_resource $payload $source
+setup_repos $payload $source 
 echo "Resource setup successful."
 
 namespace=$(jq -r '.source.namespace // "default"' < $payload)
@@ -30,18 +31,26 @@ debug=$(jq -r '.params.debug // "false"' < $payload)
 replace=$(jq -r '.params.replace // "false"' < $payload)
 delete=$(jq -r '.params.delete // "false"' < $payload)
 test=$(jq -r '.params.test // "false"' < $payload)
+test_logs=$(jq -r '.params.test_logs // "false"' < $payload)
 purge=$(jq -r '.params.purge // "false"' < $payload)
 devel=$(jq -r '.params.devel // "false"' < $payload)
 force=$(jq -r '.params.force // "false"' < $payload)
+show_diff=$(jq -r '.params.show_diff // "false"' < $payload)
 post_renderer=$(jq -r '.params.post_renderer // ""' < $payload)
 reuse_values=$(jq -r '.params.reuse_values // "false"' < $payload)
 reset_values=$(jq -r '.params.reset_values // "false"' < $payload)
 wait=$(jq -r '.params.wait // 0' < $payload)
 check_is_ready=$(jq -r '.params.check_is_ready // "false"' < $payload)
 timeout=$(jq -r '.params.timeout // "5m0s"' < $payload)
+skip_missing_values=$(jq -r '.params.skip_missing_values // "false"' < $payload)
 
-if [ -z "$chart" ] && [[ "$delete" == "false" ]]; then
+if [[ "$test" == "false" ]] && [[ "$delete" == "false" ]] && [ -z "$chart" ] ; then
   echo "invalid payload (missing chart)"
+  exit 1
+fi
+
+if [[ "$test" == "true" ]] && [[ "$delete" == "true" ]] ; then
+  echo "invalid payload ( test and delete cannot both be true )"
   exit 1
 fi
 
@@ -88,7 +97,7 @@ set_overridden_values() {
 
     overridden_args+=("$helm_set_opt" "$key=$value")
     scrubbed_overridden_args+=("$helm_set_opt" "$key=$scrubbed_value")
-  done < <(jq -j '.params.override_values[]? | if .key and (.value or .path) then (.key, .value // "", .path // "", .hide // false, .type, .verbatim // false) else empty end | tostring + "\u0000"'  < $payload)
+  done < <(jq -j '.params.override_values[]? | if has("key") and (has("value") or has("path")) then (.key, .value // "", .path // "", .hide // false, .type, .verbatim // false) else empty end | tostring + "\u0000"'  < $payload)
 }
 
 current_deployed() {
@@ -103,10 +112,21 @@ helm_upgrade() {
   else
     upgrade_args=("upgrade" "$release" $chart_full "--install" "--namespace=$namespace")
   fi
+  upgrade_diff_args=("upgrade" "$release" $chart_full "--install" "--namespace=$namespace")
 
   if [ -n "$values" ]; then
     for value in $values; do
-      upgrade_args+=("-f" "$source/"$value)
+      if [ "$skip_missing_values" == "true" ]; then
+        if [ -f "$source/$value" ]; then
+          upgrade_args+=("-f" "$source/"$value)
+          upgrade_diff_args+=("-f" "$source/"$value)
+        else
+          echo "skipping missing values file $source/$value"
+        fi
+      else
+        upgrade_args+=("-f" "$source/"$value)
+        upgrade_diff_args+=("-f" "$source/"$value)
+      fi
     done
   fi
 
@@ -129,10 +149,7 @@ helm_upgrade() {
   if [ "$debug" == "true" ]; then
     upgrade_args+=("--debug")
     upgrade_args+=("--dry-run")
-  fi
-
-  if [ "$devel" == "true" ]; then
-    non_diff_args+=("--devel")
+    upgrade_diff_args+=("--dry-run")
   fi
 
   if [ -n "$version" ]; then
@@ -140,6 +157,7 @@ helm_upgrade() {
       version=$(cat $source/$version)
     fi
     upgrade_args+=("--version" "$version")
+    upgrade_diff_args+=("--version" "$version")
   fi
 
   if [ "$cleanup_on_fail" == "true" ]; then
@@ -152,14 +170,17 @@ helm_upgrade() {
 
   if [ -n "$post_renderer" ]; then
     upgrade_args+=("--post-renderer" "$chart_full/$post_renderer")
+    upgrade_diff_args+=("--post-renderer" "$chart_full/$post_renderer")
   fi
 
   if [ "$reuse_values" == "true" ]; then
     upgrade_args+=("--reuse-values")
+    upgrade_diff_args+=("--reuse-values")
   fi
 
   if [ "$reset_values" == "true" ]; then
     upgrade_args+=("--reset-values")
+    upgrade_diff_args+=("--reset-values")
   fi
 
   upgrade_args+=("--timeout=${timeout}")
@@ -174,6 +195,7 @@ helm_upgrade() {
 
   helm_args=("${upgrade_args[@]}" "${overridden_args[@]}")
   helm_echo_args=("${upgrade_args[@]}" "${scrubbed_overridden_args[@]}")
+  helm_diff_args=("${upgrade_diff_args[@]}" "${overridden_args[@]}" "--suppress-secrets" "--include-tests" )
 
   if [[ -d "$chart_full" ]]; then
     helm_depup_args=("dependency" "update" "$chart_full")
@@ -182,6 +204,10 @@ helm_upgrade() {
     $helm_bin "${helm_depup_args[@]}" | tee "$logfile"
   fi
 
+  if [ "$show_diff" = true ] && [ "$devel" != true ]; then
+    echo "Release diff:"
+    $helm_bin diff "${helm_diff_args[@]}" | tee "$logfile"
+  fi
 
   echo "Running command helm ${helm_echo_args[@]} | tee $logfile"
   upgrade_result=$($helm_bin "${helm_args[@]}" | tee "$logfile")
@@ -216,8 +242,26 @@ helm_delete() {
 }
 
 helm_test() {
-  echo "To be implemented"
-  exit 1
+  if [ -z "$release" ]; then
+    echo "invalid payload (missing release if test=true)"
+    exit 1
+  fi
+  
+  if [ "$debug" = true ]; then
+    test_args+=("--debug")
+  fi
+  
+  test_args+=("--namespace=$namespace" "test" "$release" "--timeout=$timeout")
+ 
+  if [ "$test_logs" = true ] ; then
+    test_args+=("--logs")
+  fi
+
+  logfile="/tmp/log"
+  mkdir -p /tmp
+
+  echo "Running command helm ${test_args[@]} | tee $logfile"
+  $helm_bin ${test_args[@]} | tee $logfile
 }
 
 if [ "$delete" = true ]; then
